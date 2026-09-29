@@ -31,7 +31,7 @@
       z-index: 1;
     }
 
-    /* Lớp vẽ khung ảnh AR & hạt hiệu ứng */
+    /* Lớp vẽ khung ảnh AR, hạt sáng & pháo giấy */
     #ar-canvas {
       position: absolute;
       top: 0;
@@ -42,7 +42,7 @@
       pointer-events: none;
     }
 
-    /* Màn hình khởi động để xin quyền Camera */
+    /* Màn hình khởi động */
     #start-overlay {
       position: absolute;
       top: 0;
@@ -113,7 +113,7 @@
     window.addEventListener('resize', resize);
     resize();
 
-    // Hạt lấp lánh (Sparkles & Stars)
+    // 1. Hạt bụi sao lấp lánh (giữ nguyên bản trước)
     const sparkles = [];
     for (let i = 0; i < 20; i++) {
       sparkles.push({
@@ -126,7 +126,37 @@
       });
     }
 
-    // Khởi động Camera sau
+    // 2. Mảng chứa mảnh pháo hoa giấy (Confetti)
+    let confettiList = [];
+    const confettiColors = ['#ff0a54', '#ff477e', '#ff7096', '#ff85a1', '#fbb1bd', '#f72585', '#7209b7', '#3a0ca3', '#4cc9f0', '#ffe400'];
+
+    function launchConfetti() {
+      const pieceCount = 180; // Số lượng mảnh giấy nổ ra
+      const originX = width / 2;
+      const originY = height * 0.65; // Nổ từ giữa phần thân lên
+
+      for (let i = 0; i < pieceCount; i++) {
+        const angle = -Math.PI / 2 + (Math.random() - 0.5) * (Math.PI * 0.9);
+        const speed = 10 + Math.random() * 22;
+        confettiList.push({
+          x: originX,
+          y: originY,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          gravity: 0.35 + Math.random() * 0.2,
+          drag: 0.96,
+          rotation: Math.random() * 360,
+          rotationSpeed: (Math.random() - 0.5) * 15,
+          width: 8 + Math.random() * 8,
+          height: 12 + Math.random() * 10,
+          color: confettiColors[Math.floor(Math.random() * confettiColors.length)],
+          alpha: 1,
+          decay: 0.006 + Math.random() * 0.007
+        });
+      }
+    }
+
+    // Khởi động Camera sau và kích hoạt pháo giấy
     async function startCamera() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -136,6 +166,10 @@
         video.srcObject = stream;
         await video.play();
         startOverlay.style.display = 'none';
+        
+        // Bắn pháo giấy chúc mừng ngay khi camera vừa lên
+        launchConfetti();
+
         requestAnimationFrame(renderLoop);
       } catch (err) {
         alert('Vui lòng cấp quyền truy cập Camera để tiếp tục!');
@@ -150,7 +184,7 @@
       time += 0.035;
       ctx.clearRect(0, 0, width, height);
 
-      // --- 1. Hiệu ứng các hạt bay trôi nổi xung quanh ---
+      // --- Hiệu ứng 1: Bụi sao bay trôi nổi xung quanh ---
       for (const sp of sparkles) {
         sp.y -= sp.speedY;
         if (sp.y < -20) sp.y = height + 10;
@@ -165,24 +199,18 @@
         ctx.restore();
       }
 
-      // --- 2. Tính toán chuyển động cho toàn bộ khung ảnh ---
-      // Lắc lư nhẹ sang 2 bên
+      // --- Hiệu ứng 2: Chuyển động khung ảnh AR ---
       const offsetX = Math.sin(time * 1.2) * 10;
-      // Nhún nhảy lên xuống rõ ràng hơn
       const offsetY = Math.cos(time * 1.5) * 14;
-      // Góc nghiêng lắc lư theo nhịp
       const rotation = Math.sin(time * 0.9) * 0.02;
-      // Hiệu ứng thở (nhịp đập phóng to/thu nhỏ nhẹ)
       const scale = 1.02 + Math.sin(time * 2.0) * 0.025;
 
-      // --- 3. Vẽ ảnh PNG Full Màn Hình ---
       if (overlayImg.complete && overlayImg.naturalWidth !== 0) {
         ctx.save();
         ctx.translate(width / 2 + offsetX, height / 2 + offsetY);
         ctx.rotate(rotation);
         ctx.scale(scale, scale);
 
-        // Canh chỉnh khung ảnh full vừa khít màn hình điện thoại (object-fit: contain)
         const imgAspect = overlayImg.naturalWidth / overlayImg.naturalHeight;
         const screenAspect = width / height;
 
@@ -196,6 +224,31 @@
         }
 
         ctx.drawImage(overlayImg, -drawW / 2, -drawH / 2, drawW, drawH);
+        ctx.restore();
+      }
+
+      // --- Hiệu ứng 3: Pháo giấy (Confetti) nổ tung và rơi bồng bềnh ---
+      for (let i = confettiList.length - 1; i >= 0; i--) {
+        const c = confettiList[i];
+        c.vx *= c.drag;
+        c.vy *= c.drag;
+        c.vy += c.gravity;
+        c.x += c.vx;
+        c.y += c.vy;
+        c.rotation += c.rotationSpeed;
+        c.alpha -= c.decay;
+
+        if (c.alpha <= 0 || c.y > height + 50) {
+          confettiList.splice(i, 1);
+          continue;
+        }
+
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, c.alpha);
+        ctx.translate(c.x, c.y);
+        ctx.rotate((c.rotation * Math.PI) / 180);
+        ctx.fillStyle = c.color;
+        ctx.fillRect(-c.width / 2, -c.height / 2, c.width, c.height);
         ctx.restore();
       }
 
